@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2014 Axel Fontaine
+/*
+ * Copyright 2010-2019 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,17 @@
  */
 package org.flywaydb.core.internal.info;
 
-
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
 import org.flywaydb.core.api.MigrationType;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.resolver.ResolvedMigration;
-import org.flywaydb.core.internal.metadatatable.AppliedMigration;
-import org.flywaydb.core.internal.util.ObjectUtils;
+import org.flywaydb.core.internal.resolver.ResolvedMigrationImpl;
+import org.flywaydb.core.internal.schemahistory.AppliedMigration;
+import org.flywaydb.core.internal.util.AbbreviationUtils;
 
 import java.util.Date;
+import java.util.Objects;
 
 /**
  * Default implementation of MigrationInfo.
@@ -46,17 +47,41 @@ public class MigrationInfoImpl implements MigrationInfo {
     private final MigrationInfoContext context;
 
     /**
+     * Whether this migration was applied out of order.
+     */
+    private final boolean outOfOrder;
+
+
+
+
+
+
+
+
+    /**
      * Creates a new MigrationInfoImpl.
      *
      * @param resolvedMigration The resolved migration to aggregate the info from.
      * @param appliedMigration  The applied migration to aggregate the info from.
      * @param context           The current context.
+     * @param outOfOrder        Whether this migration was applied out of order.
+
+
+
      */
-    public MigrationInfoImpl(ResolvedMigration resolvedMigration, AppliedMigration appliedMigration,
-                             MigrationInfoContext context) {
+    MigrationInfoImpl(ResolvedMigration resolvedMigration, AppliedMigration appliedMigration,
+                      MigrationInfoContext context, boolean outOfOrder
+
+
+
+    ) {
         this.resolvedMigration = resolvedMigration;
         this.appliedMigration = appliedMigration;
         this.context = context;
+        this.outOfOrder = outOfOrder;
+
+
+
     }
 
     /**
@@ -73,6 +98,7 @@ public class MigrationInfoImpl implements MigrationInfo {
         return appliedMigration;
     }
 
+    @Override
     public MigrationType getType() {
         if (appliedMigration != null) {
             return appliedMigration.getType();
@@ -80,6 +106,7 @@ public class MigrationInfoImpl implements MigrationInfo {
         return resolvedMigration.getType();
     }
 
+    @Override
     public Integer getChecksum() {
         if (appliedMigration != null) {
             return appliedMigration.getChecksum();
@@ -87,6 +114,7 @@ public class MigrationInfoImpl implements MigrationInfo {
         return resolvedMigration.getChecksum();
     }
 
+    @Override
     public MigrationVersion getVersion() {
         if (appliedMigration != null) {
             return appliedMigration.getVersion();
@@ -94,6 +122,7 @@ public class MigrationInfoImpl implements MigrationInfo {
         return resolvedMigration.getVersion();
     }
 
+    @Override
     public String getDescription() {
         if (appliedMigration != null) {
             return appliedMigration.getDescription();
@@ -101,6 +130,7 @@ public class MigrationInfoImpl implements MigrationInfo {
         return resolvedMigration.getDescription();
     }
 
+    @Override
     public String getScript() {
         if (appliedMigration != null) {
             return appliedMigration.getScript();
@@ -108,18 +138,36 @@ public class MigrationInfoImpl implements MigrationInfo {
         return resolvedMigration.getScript();
     }
 
+    @Override
     public MigrationState getState() {
+
+
+
+
+
+
         if (appliedMigration == null) {
-            if (resolvedMigration.getVersion().compareTo(context.init) < 0) {
-                return MigrationState.PREINIT;
-            }
-            if (resolvedMigration.getVersion().compareTo(context.target) > 0) {
-                return MigrationState.ABOVE_TARGET;
-            }
-            if ((resolvedMigration.getVersion().compareTo(context.lastApplied) < 0) && !context.outOfOrder) {
-                return MigrationState.IGNORED;
+            if (resolvedMigration.getVersion() != null) {
+                if (resolvedMigration.getVersion().compareTo(context.baseline) < 0) {
+                    return MigrationState.BELOW_BASELINE;
+                }
+
+
+
+
+
+                if (context.target != null && resolvedMigration.getVersion().compareTo(context.target) > 0) {
+                    return MigrationState.ABOVE_TARGET;
+                }
+                if ((resolvedMigration.getVersion().compareTo(context.lastApplied) < 0) && !context.outOfOrder) {
+                    return MigrationState.IGNORED;
+                }
             }
             return MigrationState.PENDING;
+        }
+
+        if (MigrationType.BASELINE == appliedMigration.getType()) {
+            return MigrationState.BASELINE;
         }
 
         if (resolvedMigration == null) {
@@ -127,17 +175,12 @@ public class MigrationInfoImpl implements MigrationInfo {
                 return MigrationState.SUCCESS;
             }
 
-            if (MigrationType.INIT == appliedMigration.getType()) {
-                return MigrationState.SUCCESS;
-            }
-
-            if (getVersion().compareTo(context.lastResolved) < 0) {
+            if ((appliedMigration.getVersion() == null) || getVersion().compareTo(context.lastResolved) < 0) {
                 if (appliedMigration.isSuccess()) {
                     return MigrationState.MISSING_SUCCESS;
                 }
                 return MigrationState.MISSING_FAILED;
-            }
-            if (getVersion().compareTo(context.lastResolved) > 0) {
+            } else {
                 if (appliedMigration.isSuccess()) {
                     return MigrationState.FUTURE_SUCCESS;
                 }
@@ -145,15 +188,27 @@ public class MigrationInfoImpl implements MigrationInfo {
             }
         }
 
-        if (appliedMigration.isSuccess()) {
-            if (appliedMigration.getVersionRank() == appliedMigration.getInstalledRank()) {
-                return MigrationState.SUCCESS;
+        if (!appliedMigration.isSuccess()) {
+            return MigrationState.FAILED;
+        }
+
+        if (appliedMigration.getVersion() == null) {
+            if (appliedMigration.getInstalledRank() == context.latestRepeatableRuns.get(appliedMigration.getDescription())) {
+                if (Objects.equals(appliedMigration.getChecksum(), resolvedMigration.getChecksum())) {
+                    return MigrationState.SUCCESS;
+                }
+                return MigrationState.OUTDATED;
             }
+            return MigrationState.SUPERSEDED;
+        }
+
+        if (outOfOrder) {
             return MigrationState.OUT_OF_ORDER;
         }
-        return MigrationState.FAILED;
+        return MigrationState.SUCCESS;
     }
 
+    @Override
     public Date getInstalledOn() {
         if (appliedMigration != null) {
             return appliedMigration.getInstalledOn();
@@ -161,6 +216,23 @@ public class MigrationInfoImpl implements MigrationInfo {
         return null;
     }
 
+    @Override
+    public String getInstalledBy() {
+        if (appliedMigration != null) {
+            return appliedMigration.getInstalledBy();
+        }
+        return null;
+    }
+
+    @Override
+    public Integer getInstalledRank() {
+        if (appliedMigration != null) {
+            return appliedMigration.getInstalledRank();
+        }
+        return null;
+    }
+
+    @Override
     public Integer getExecutionTime() {
         if (appliedMigration != null) {
             return appliedMigration.getExecutionTime();
@@ -174,39 +246,174 @@ public class MigrationInfoImpl implements MigrationInfo {
      * @return The error message, or {@code null} if everything is fine.
      */
     public String validate() {
+        MigrationState state = getState();
+
+
+
+
+
+
+
+
+        // Ignore any migrations above the current target as they are out of scope.
+        if (MigrationState.ABOVE_TARGET.equals(state)) {
+            return null;
+        }
+
+        if (state.isFailed() && (!context.future || MigrationState.FUTURE_FAILED != state)) {
+            if (getVersion() == null) {
+                return "Detected failed repeatable migration: " + getDescription();
+            }
+            return "Detected failed migration to version " + getVersion() + " (" + getDescription() + ")";
+        }
+
         if ((resolvedMigration == null)
-                && (appliedMigration.getType() != MigrationType.SCHEMA)
-                && (appliedMigration.getType() != MigrationType.INIT)) {
-            return "Detected applied migration missing on the classpath: " + getVersion();
+                && !appliedMigration.getType().isSynthetic()
+
+
+
+                && (appliedMigration.getVersion() != null)
+                && (!context.missing || (MigrationState.MISSING_SUCCESS != state && MigrationState.MISSING_FAILED != state))
+                && (!context.future || (MigrationState.FUTURE_SUCCESS != state && MigrationState.FUTURE_FAILED != state))) {
+            return "Detected applied migration not resolved locally: " + getVersion();
         }
 
-        if ((!context.pending && (MigrationState.PENDING == getState()))
-                || (MigrationState.IGNORED == getState())) {
-            return "Migration on the classpath has not been applied to database: " + getVersion();
+        if (!context.pending && MigrationState.PENDING == state || (!context.ignored && MigrationState.IGNORED == state)) {
+            if (getVersion() != null) {
+                return "Detected resolved migration not applied to database: " + getVersion();
+            }
+            return "Detected resolved repeatable migration not applied to database: " + getDescription();
         }
 
-        if (resolvedMigration != null && appliedMigration != null) {
-            if (getVersion().compareTo(context.init) > 0) {
+        if (!context.pending && MigrationState.OUTDATED == state) {
+            return "Detected outdated resolved repeatable migration that should be re-applied to database: " + getDescription();
+        }
+
+        if (resolvedMigration != null && appliedMigration != null
+
+
+
+        ) {
+            String migrationIdentifier = appliedMigration.getVersion() == null ?
+                    // Repeatable migrations
+                    appliedMigration.getScript() :
+                    // Versioned migrations
+                    "version " + appliedMigration.getVersion();
+            if (getVersion() == null || getVersion().compareTo(context.baseline) > 0) {
                 if (resolvedMigration.getType() != appliedMigration.getType()) {
-                    return String.format("Migration Type mismatch for migration %s: DB=%s, Classpath=%s",
-                            appliedMigration.getScript(), appliedMigration.getType(), resolvedMigration.getType());
+                    return createMismatchMessage("type", migrationIdentifier,
+                            appliedMigration.getType(), resolvedMigration.getType());
                 }
-                if (!ObjectUtils.nullSafeEquals(resolvedMigration.getChecksum(), appliedMigration.getChecksum())) {
-                    return String.format("Migration Checksum mismatch for migration %s: DB=%s, Classpath=%s",
-                            appliedMigration.getScript(), appliedMigration.getChecksum(), resolvedMigration.getChecksum());
+                if (resolvedMigration.getVersion() != null
+                        || (context.pending && MigrationState.OUTDATED != state && MigrationState.SUPERSEDED != state)) {
+                    if (!Objects.equals(resolvedMigration.getChecksum(), appliedMigration.getChecksum())) {
+                        return createMismatchMessage("checksum", migrationIdentifier,
+                                appliedMigration.getChecksum(), resolvedMigration.getChecksum());
+                    }
                 }
-                if (!resolvedMigration.getDescription().equals(appliedMigration.getDescription())) {
-                    return String.format("Migration Description mismatch for migration %s: DB=%s, Classpath=%s",
-                            appliedMigration.getScript(), appliedMigration.getDescription(), resolvedMigration.getDescription());
+                if (!AbbreviationUtils.abbreviateDescription(resolvedMigration.getDescription())
+                        .equals(appliedMigration.getDescription())) {
+                    return createMismatchMessage("description", migrationIdentifier,
+                            appliedMigration.getDescription(), resolvedMigration.getDescription());
                 }
             }
         }
+
+        // Perform additional validation for pending migrations. This is not performed for previously applied migrations
+        // as it is assumed that if the checksum is unchanged, previous positive validation results still hold true.
+        // #2392: Migrations above target are also ignored as the user explicitly asked for them to not be taken into account.
+        if (!context.pending && MigrationState.PENDING == state && resolvedMigration instanceof ResolvedMigrationImpl) {
+            ((ResolvedMigrationImpl) resolvedMigration).validate();
+        }
+
         return null;
     }
 
-    @SuppressWarnings("NullableProblems")
+    /**
+     * Creates a message for a mismatch.
+     *
+     * @param mismatch            The type of mismatch.
+     * @param migrationIdentifier The offending version.
+     * @param applied             The applied value.
+     * @param resolved            The resolved value.
+     * @return The message.
+     */
+    private String createMismatchMessage(String mismatch, String migrationIdentifier, Object applied, Object resolved) {
+        return String.format("Migration " + mismatch + " mismatch for migration %s\n" +
+                        "-> Applied to database : %s\n" +
+                        "-> Resolved locally    : %s",
+                migrationIdentifier, applied, resolved);
+    }
+
+    @Override
     public int compareTo(MigrationInfo o) {
-        return getVersion().compareTo(o.getVersion());
+        if ((getInstalledRank() != null) && (o.getInstalledRank() != null)) {
+            return getInstalledRank() - o.getInstalledRank();
+        }
+
+        MigrationState state = getState();
+        MigrationState oState = o.getState();
+
+        // Below baseline migrations come before applied ones
+        if (state == MigrationState.BELOW_BASELINE && oState.isApplied()) {
+            return Integer.MIN_VALUE;
+        }
+        if (state.isApplied() && oState == MigrationState.BELOW_BASELINE) {
+            return Integer.MAX_VALUE;
+        }
+
+        if (state == MigrationState.IGNORED && oState.isApplied()) {
+            if (getVersion() != null && o.getVersion() != null) {
+                return getVersion().compareTo(o.getVersion());
+            }
+            return Integer.MIN_VALUE;
+        }
+        if (state.isApplied() && oState == MigrationState.IGNORED) {
+            if (getVersion() != null && o.getVersion() != null) {
+                return getVersion().compareTo(o.getVersion());
+            }
+            return Integer.MAX_VALUE;
+        }
+
+        // Sort installed before pending
+        if (getInstalledRank() != null) {
+            return Integer.MIN_VALUE;
+        }
+        if (o.getInstalledRank() != null) {
+            return Integer.MAX_VALUE;
+        }
+
+        // No migration installed, sort according to other criteria
+        // Two versioned migrations: sort by version
+        if (getVersion() != null && o.getVersion() != null) {
+            int v = getVersion().compareTo(o.getVersion());
+            if (v != 0) {
+                return v;
+            }
+
+
+
+
+
+
+
+
+
+
+
+            return 0;
+        }
+
+        // One versioned and one repeatable migration: versioned migration goes before repeatable one
+        if (getVersion() != null) {
+            return Integer.MIN_VALUE;
+        }
+        if (o.getVersion() != null) {
+            return Integer.MAX_VALUE;
+        }
+
+        // Two repeatable migrations: sort by description
+        return getDescription().compareTo(o.getDescription());
     }
 
     @SuppressWarnings("SimplifiableIfStatement")

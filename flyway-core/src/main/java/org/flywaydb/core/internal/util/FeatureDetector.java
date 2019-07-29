@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2014 Axel Fontaine
+/*
+ * Copyright 2010-2019 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 package org.flywaydb.core.internal.util;
 
-import org.flywaydb.core.internal.util.logging.Log;
-import org.flywaydb.core.internal.util.logging.LogFactory;
+import org.flywaydb.core.api.logging.Log;
+import org.flywaydb.core.api.logging.LogFactory;
 
 /**
  * Detects whether certain features are available or not.
@@ -44,9 +44,9 @@ public final class FeatureDetector {
     private Boolean apacheCommonsLoggingAvailable;
 
     /**
-     * Flag indicating availability of Spring JDBC.
+     * Flag indicating availability of the Slf4j.
      */
-    private Boolean springJdbcAvailable;
+    private Boolean slf4jAvailable;
 
     /**
      * Flag indicating availability of JBoss VFS v2.
@@ -82,17 +82,16 @@ public final class FeatureDetector {
     }
 
     /**
-     * Checks whether Spring Jdbc is available.
+     * Checks whether Slf4j is available.
      *
      * @return {@code true} if it is, {@code false if it is not}
      */
-    public boolean isSpringJdbcAvailable() {
-        if (springJdbcAvailable == null) {
-            springJdbcAvailable = ClassUtils.isPresent("org.springframework.jdbc.core.JdbcTemplate", classLoader);
-            LOG.debug("Spring Jdbc available: " + springJdbcAvailable);
+    public boolean isSlf4jAvailable() {
+        if (slf4jAvailable == null) {
+            slf4jAvailable = ClassUtils.isPresent("org.slf4j.Logger", classLoader);
         }
 
-        return springJdbcAvailable;
+        return slf4jAvailable;
     }
 
     /**
@@ -130,6 +129,8 @@ public final class FeatureDetector {
      */
     public boolean isOsgiFrameworkAvailable() {
         if (osgiFrameworkAvailable == null) {
+            // Use this class' classloader to detect the OSGi framework
+            ClassLoader classLoader = FeatureDetector.class.getClassLoader();
             osgiFrameworkAvailable = ClassUtils.isPresent("org.osgi.framework.Bundle", classLoader);
             LOG.debug("OSGi framework available: " + osgiFrameworkAvailable);
         }

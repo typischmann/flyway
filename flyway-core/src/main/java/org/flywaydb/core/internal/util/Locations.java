@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2014 Axel Fontaine
+/*
+ * Copyright 2010-2019 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,9 @@
  */
 package org.flywaydb.core.internal.util;
 
-import org.flywaydb.core.internal.util.logging.Log;
-import org.flywaydb.core.internal.util.logging.LogFactory;
+import org.flywaydb.core.api.Location;
+import org.flywaydb.core.api.logging.Log;
+import org.flywaydb.core.api.logging.LogFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,7 +32,7 @@ public class Locations {
     /**
      * The backing list.
      */
-    private final List<Location> locations = new ArrayList<Location>();
+    private final List<Location> locations = new ArrayList<>();
 
     /**
      * Creates a new Locations wrapper with these raw locations.
@@ -39,13 +40,27 @@ public class Locations {
      * @param rawLocations The raw locations to process.
      */
     public Locations(String... rawLocations) {
-        List<Location> normalizedLocations = new ArrayList<Location>();
+        List<Location> normalizedLocations = new ArrayList<>();
         for (String rawLocation : rawLocations) {
             normalizedLocations.add(new Location(rawLocation));
         }
-        Collections.sort(normalizedLocations);
+        processLocations(normalizedLocations);
+    }
 
-        for (Location normalizedLocation : normalizedLocations) {
+    /**
+     * Creates a new Locations wrapper with these locations.
+     *
+     * @param rawLocations The locations to process.
+     */
+    public Locations(List<Location> rawLocations) {
+        processLocations(rawLocations);
+    }
+
+    private void processLocations(List<Location> rawLocations) {
+        List<Location> sortedLocations = new ArrayList<>(rawLocations);
+        Collections.sort(sortedLocations);
+
+        for (Location normalizedLocation : sortedLocations) {
             if (locations.contains(normalizedLocation)) {
                 LOG.warn("Discarding duplicate location '" + normalizedLocation + "'");
                 continue;

@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2014 Axel Fontaine
+/*
+ * Copyright 2010-2019 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@
  */
 package org.flywaydb.core.internal.util;
 
+import org.flywaydb.core.api.FlywayException;
+
+import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -37,18 +40,24 @@ public class UrlUtils {
      * @return The file path.
      */
     public static String toFilePath(URL url) {
-        String filePath;
+        String filePath = new File(decodeURL(url.getPath().replace("+", "%2b"))).getAbsolutePath();
+        if (filePath.endsWith("/")) {
+            return filePath.substring(0, filePath.length() - 1);
+        }
+        return filePath;
+    }
 
+    /**
+     * Decodes this UTF-8 encoded URL.
+     *
+     * @param url The url to decode.
+     * @return The decoded URL.
+     */
+    public static String decodeURL(String url) {
         try {
-            filePath = URLDecoder.decode(url.getPath(), "UTF-8");
+            return URLDecoder.decode(url, "UTF-8");
         } catch (UnsupportedEncodingException e) {
             throw new IllegalStateException("Can never happen", e);
         }
-
-        if (filePath.endsWith("/")) {
-            filePath = filePath.substring(0, filePath.length() - 1);
-        }
-
-        return filePath;
     }
 }

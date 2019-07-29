@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2014 Axel Fontaine
+/*
+ * Copyright 2010-2019 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,21 @@
 package org.flywaydb.core.internal.info;
 
 import org.flywaydb.core.api.MigrationInfo;
+import org.flywaydb.core.api.MigrationState;
+import org.flywaydb.core.api.MigrationVersion;
+import org.flywaydb.core.internal.util.AsciiTable;
 import org.flywaydb.core.internal.util.DateUtils;
-import org.flywaydb.core.internal.util.StringUtils;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Dumps migrations in an ascii-art table in the logs and the console.
  */
 public class MigrationInfoDumper {
-    /**
-     * The minimum width (in chars) of the console we want to print the ascii table on.
-     */
-    private static final int MINIMUM_CONSOLE_WIDTH = 80;
-
     /**
      * Prevent instantiation.
      */
@@ -42,38 +45,87 @@ public class MigrationInfoDumper {
      * @return The ascii table, as one big multi-line string.
      */
     public static String dumpToAsciiTable(MigrationInfo[] migrationInfos) {
-        return dumpToAsciiTable(migrationInfos, MINIMUM_CONSOLE_WIDTH);
-    }
 
-    /**
-     * Dumps the info about all migrations into an ascii table.
-     *
-     * @param migrationInfos The list of migrationInfos to dump.
-     * @param consoleWidth   The width of the console (80 or greater).
-     * @return The ascii table, as one big multi-line string.
-     */
-    public static String dumpToAsciiTable(MigrationInfo[] migrationInfos, int consoleWidth) {
-        int descriptionWidth = Math.max(consoleWidth, MINIMUM_CONSOLE_WIDTH) - 54;
 
-        StringBuilder table = new StringBuilder();
 
-        table.append("+----------------+-").append(StringUtils.trimOrPad("", descriptionWidth, '-')).append("-+---------------------+---------+\n");
-        table.append("| Version        | ").append(StringUtils.trimOrPad("Description", descriptionWidth)).append(" | Installed on        | State   |\n");
-        table.append("+----------------+-").append(StringUtils.trimOrPad("", descriptionWidth, '-')).append("-+---------------------+---------+\n");
 
-        if (migrationInfos.length == 0) {
-            table.append("| No migrations found                                                         |\n");
-        } else {
-            for (MigrationInfo migrationInfo : migrationInfos) {
-                table.append("| ").append(StringUtils.trimOrPad(migrationInfo.getVersion().toString(), 14));
-                table.append(" | ").append(StringUtils.trimOrPad(migrationInfo.getDescription(), descriptionWidth));
-                table.append(" | ").append(StringUtils.trimOrPad(DateUtils.formatDateAsIsoString(migrationInfo.getInstalledOn()), 19));
-                table.append(" | ").append(StringUtils.trimOrPad(migrationInfo.getState().getDisplayName(), 7));
-                table.append(" |\n");
-            }
+
+        List<String> columns = Arrays.asList("Category", "Version", "Description", "Type", "Installed On", "State"
+
+
+
+        );
+
+        List<List<String>> rows = new ArrayList<>();
+        for (MigrationInfo migrationInfo : migrationInfos) {
+            List<String> row = Arrays.asList(
+                    getCategory(migrationInfo),
+                    getVersionStr(migrationInfo),
+                    migrationInfo.getDescription(),
+                    migrationInfo.getType().name(),
+                    DateUtils.formatDateAsIsoString(migrationInfo.getInstalledOn()),
+                    migrationInfo.getState().getDisplayName()
+
+
+
+            );
+            rows.add(row);
         }
 
-        table.append("+----------------+-").append(StringUtils.trimOrPad("", descriptionWidth, '-')).append("-+---------------------+---------+");
-        return table.toString();
+        return new AsciiTable(columns, rows, true, "", "No migrations found").render();
     }
+
+    static String getCategory(MigrationInfo migrationInfo) {
+        if (migrationInfo.getType().isSynthetic()) {
+            return "";
+        }
+        if (migrationInfo.getVersion() == null) {
+            return "Repeatable";
+        }
+
+
+
+
+
+        return "Versioned";
+    }
+
+    private static String getVersionStr(MigrationInfo migrationInfo) {
+        return migrationInfo.getVersion() == null ? "" : migrationInfo.getVersion().toString();
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }

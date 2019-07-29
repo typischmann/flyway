@@ -1,5 +1,5 @@
 @REM
-@REM Copyright 2010-2014 Axel Fontaine
+@REM Copyright 2010-2019 Boxfuse GmbH
 @REM
 @REM Licensed under the Apache License, Version 2.0 (the "License");
 @REM you may not use this file except in compliance with the License.
@@ -18,33 +18,54 @@
 
 setlocal
 
-@REM Save current directory
-set OLDDIR=%CD%
-
 @REM Set the current directory to the installation directory
-chdir /d %~dp0
+call :getCurrentBatch INSTALLDIR1
+set INSTALLDIR=%INSTALLDIR1%
+set INSTALLDIR=%INSTALLDIR:~0,-10%
 
-@REM Use JAVA_HOME if it is set
-if "%JAVA_HOME%"=="" (
- set JAVA_CMD=java
+if exist "%INSTALLDIR%\jre\bin\java.exe" (
+ set JAVA_CMD="%INSTALLDIR%\jre\bin\java.exe"
 ) else (
- set JAVA_CMD="%JAVA_HOME%\bin\java.exe"
+ @REM Use JAVA_HOME if it is set
+ if "%JAVA_HOME%"=="" (
+  set JAVA_CMD=java
+ ) else (
+  set JAVA_CMD="%JAVA_HOME%\bin\java.exe"
+ )
 )
 
-@REM Detect the width of the console
-for /F "usebackq tokens=2* skip=4 delims=: " %%A in (`mode con`) do (
-  set CONSOLE_WIDTH=%%A
-  goto ExitLoop
+if "%JAVA_ARGS%"=="" (
+  set JAVA_ARGS=
 )
-:ExitLoop
 
-%JAVA_CMD% -cp bin\flyway-commandline-${project.version}.jar;bin\flyway-core-${project.version}.jar org.flywaydb.commandline.Main %* -consoleWidth=%CONSOLE_WIDTH%
+@REM Determine Flyway edition to use
+:loop
+IF NOT [%1]==[] (
+    IF [%1]==[-community] (
+        SET FLYWAY_EDITION=community
+        GOTO :loop-end
+    )
+    IF [%1]==[-pro] (
+        SET FLYWAY_EDITION=pro
+        GOTO :loop-end
+    )
+    IF [%1]==[-enterprise] (
+        SET FLYWAY_EDITION=enterprise
+        GOTO :loop-end
+    )
+    SHIFT /1
+    GOTO :loop
+)
+:loop-end
+if "%FLYWAY_EDITION%"=="" (
+  set FLYWAY_EDITION=community
+)
 
-@REM Save the exit code
-set JAVA_EXIT_CODE=%ERRORLEVEL%
-
-@REM Restore current directory
-chdir /d %OLDDIR%
+%JAVA_CMD% %JAVA_ARGS% -cp "%CLASSPATH%;%INSTALLDIR%\lib\%FLYWAY_EDITION%\*;%INSTALLDIR%\drivers\*" org.flywaydb.commandline.Main %*
 
 @REM Exit using the same code returned from Java
-EXIT /B %JAVA_EXIT_CODE%
+EXIT /B %ERRORLEVEL%
+
+:getCurrentBatch variableName
+    set "%~1=%~f0"
+    goto :eof

@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2014 Axel Fontaine
+/*
+ * Copyright 2010-2019 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,14 @@
 package org.flywaydb.core.internal.util;
 
 import org.flywaydb.core.api.FlywayException;
+import org.flywaydb.core.api.logging.Log;
+import org.flywaydb.core.api.logging.LogFactory;
 
-import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
+import java.io.File;
+import java.lang.reflect.Modifier;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +32,8 @@ import java.util.List;
  * Utility methods for dealing with classes.
  */
 public class ClassUtils {
+    private static final Log LOG = LogFactory.getLog(ClassUtils.class);
+
     /**
      * Prevents instantiation.
      */
@@ -41,12 +48,33 @@ public class ClassUtils {
      * @param classLoader The ClassLoader to use.
      * @param <T>         The type of the new instance.
      * @return The new instance.
-     * @throws Exception Thrown when the instantiation failed.
+     * @throws FlywayException Thrown when the instantiation failed.
      */
     @SuppressWarnings({"unchecked"})
     // Must be synchronized for the Maven Parallel Junit runner to work
-    public static synchronized <T> T instantiate(String className, ClassLoader classLoader) throws Exception {
-        return (T) Class.forName(className, true, classLoader).newInstance();
+    public static synchronized <T> T instantiate(String className, ClassLoader classLoader) {
+        try {
+            return (T) Class.forName(className, true, classLoader).getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            throw new FlywayException("Unable to instantiate class " + className + " : " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Creates a new instance of this class.
+     *
+     * @param clazz The class to instantiate.
+     * @param <T>   The type of the new instance.
+     * @return The new instance.
+     * @throws FlywayException Thrown when the instantiation failed.
+     */
+    // Must be synchronized for the Maven Parallel Junit runner to work
+    public static synchronized <T> T instantiate(Class<T> clazz) {
+        try {
+            return clazz.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            throw new FlywayException("Unable to instantiate class " + clazz.getName() + " : " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -58,14 +86,10 @@ public class ClassUtils {
      * @return The list of instances.
      */
     public static <T> List<T> instantiateAll(String[] classes, ClassLoader classLoader) {
-        List<T> clazzes = new ArrayList<T>();
+        List<T> clazzes = new ArrayList<>();
         for (String clazz : classes) {
             if (StringUtils.hasLength(clazz)) {
-                try {
-                    clazzes.add(ClassUtils.<T>instantiate(clazz, classLoader));
-                } catch (Exception e) {
-                    throw new FlywayException("Unable to instantiate class: " + clazz);
-                }
+                clazzes.add(ClassUtils.<T>instantiate(clazz, classLoader));
             }
         }
         return clazzes;
@@ -76,7 +100,7 @@ public class ClassUtils {
      * and can be loaded. Will return {@code false} if either the class or
      * one of its dependencies is not present or cannot be loaded.
      *
-     * @param className   the name of the class to check
+     * @param className   The name of the class to check.
      * @param classLoader The ClassLoader to use.
      * @return whether the specified class is present
      */
@@ -91,14 +115,31 @@ public class ClassUtils {
     }
 
     /**
-     * Computes the short name (name without package) of this class.
+     * Loads the class with this name using the class loader.
      *
-     * @param aClass The class to analyse.
-     * @return The short name.
+     * @param className   The name of the class to load.
+     * @param classLoader The ClassLoader to use.
+     * @return the newly loaded class or {@code null} if it could not be loaded.
      */
-    public static String getShortName(Class<?> aClass) {
-        String name = aClass.getName();
-        return name.substring(name.lastIndexOf(".") + 1);
+    public static Class<?> loadClass(String className, ClassLoader classLoader) {
+        try {
+            Class<?> clazz = classLoader.loadClass(className);
+            if (Modifier.isAbstract(clazz.getModifiers()) || clazz.isEnum() || clazz.isAnonymousClass()) {
+                LOG.debug("Skipping non-instantiable class: " + className);
+                return null;
+            }
+
+            clazz.getDeclaredConstructor().newInstance();
+            LOG.debug("Found class: " + className);
+            return clazz;
+        } catch (Throwable e) {
+            Throwable rootCause = ExceptionUtils.getRootCause(e);
+            LOG.debug("Skipping " + className + " (" + e.getClass().getSimpleName() + ": " + e.getMessage()
+                    + (rootCause == e ? "" :
+                    " caused by " + rootCause.getClass().getSimpleName() + ": " + rootCause.getMessage()
+                            + " at " + ExceptionUtils.getThrowLocation(rootCause)));
+            return null;
+        }
     }
 
     /**
@@ -108,17 +149,37 @@ public class ClassUtils {
      * @return The absolute path of the .class file.
      */
     public static String getLocationOnDisk(Class<?> aClass) {
-        try {
-            ProtectionDomain protectionDomain = aClass.getProtectionDomain();
-            if (protectionDomain == null) {
-                //Android
-                return null;
-            }
-            String url = protectionDomain.getCodeSource().getLocation().getPath();
-            return URLDecoder.decode(url, "UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            //Can never happen.
+        ProtectionDomain protectionDomain = aClass.getProtectionDomain();
+        if (protectionDomain == null) {
+            //Android
             return null;
         }
+        CodeSource codeSource = protectionDomain.getCodeSource();
+        if (codeSource == null) {
+            //Custom classloader with for example classes defined using URLClassLoader#defineClass(String name, byte[] b, int off, int len)
+            return null;
+        }
+        return UrlUtils.decodeURL(codeSource.getLocation().getPath());
+    }
+
+    /**
+     * Adds these jars or directories to the classpath.
+     *
+     * @param classLoader The current ClassLoader.
+     * @param jarFiles    The jars or directories to add.
+     * @return The new ClassLoader containing the additional jar or directory.
+     */
+    public static ClassLoader addJarsOrDirectoriesToClasspath(ClassLoader classLoader, List<File> jarFiles) {
+        List<URL> urls = new ArrayList<>();
+        for (File jarFile : jarFiles) {
+            LOG.debug("Adding location to classpath: " + jarFile.getAbsolutePath());
+
+            try {
+                urls.add(jarFile.toURI().toURL());
+            } catch (Exception e) {
+                throw new FlywayException("Unable to load " + jarFile.getPath(), e);
+            }
+        }
+        return new URLClassLoader(urls.toArray(new URL[0]), classLoader);
     }
 }

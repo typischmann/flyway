@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2014 Axel Fontaine
+/*
+ * Copyright 2010-2019 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import java.io.OutputStream;
 import java.io.Reader;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.charset.Charset;
 
 /**
  * Utility class for copying files and their contents. Inspired by Spring's own.
@@ -70,6 +71,21 @@ public class FileCopyUtils {
     }
 
     /**
+     * Copy the contents of the given InputStream into a new String based on this encoding.
+     * Closes the stream when done.
+     *
+     * @param in       the stream to copy from
+     * @param encoding The encoding to use.
+     * @return The new String.
+     * @throws IOException in case of I/O errors
+     */
+    public static String copyToString(InputStream in, Charset encoding) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(4096);
+        copy(in, out);
+        return out.toString(encoding.name());
+    }
+
+    /**
      * Copy the contents of the given Reader to the given Writer.
      * Closes both when done.
      *
@@ -77,7 +93,7 @@ public class FileCopyUtils {
      * @param out the Writer to copy to
      * @throws IOException in case of I/O errors
      */
-    private static void copy(Reader in, Writer out) throws IOException {
+    public static void copy(Reader in, Writer out) throws IOException {
         try {
             char[] buffer = new char[4096];
             int bytesRead;
@@ -86,16 +102,8 @@ public class FileCopyUtils {
             }
             out.flush();
         } finally {
-            try {
-                in.close();
-            } catch (IOException ex) {
-                //Ignore
-            }
-            try {
-                out.close();
-            } catch (IOException ex) {
-                //Ignore
-            }
+            IOUtils.close(in);
+            IOUtils.close(out);
         }
     }
 
@@ -108,7 +116,7 @@ public class FileCopyUtils {
      * @return the number of bytes copied
      * @throws IOException in case of I/O errors
      */
-    private static int copy(InputStream in, OutputStream out) throws IOException {
+    public static int copy(InputStream in, OutputStream out) throws IOException {
         try {
             int byteCount = 0;
             byte[] buffer = new byte[4096];
@@ -120,16 +128,8 @@ public class FileCopyUtils {
             out.flush();
             return byteCount;
         } finally {
-            try {
-                in.close();
-            } catch (IOException ex) {
-                //Ignore
-            }
-            try {
-                out.close();
-            } catch (IOException ex) {
-                //Ignore
-            }
+            IOUtils.close(in);
+            IOUtils.close(out);
         }
     }
 }
